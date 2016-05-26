@@ -1,0 +1,579 @@
+---
+title: "Munging"
+author: "Claudia Terrien"
+date: "May 9, 2016"
+output: html_document
+---
+
+```{r}
+
+library(ggplot2)
+library(psych)
+
+# Prefixes to identify Field's origin
+# M.  Model - created to be used in the model
+
+# PERIOD TO BE CONSIDERED
+# USING Q12015
+Q1 <- as.Date('2015-01-01')
+Q2 <- as.Date('2015-04-01')
+
+############################################################################################################
+# READ PredData 
+# read Variable4s file with all Variable4s until today, cast all "" to NAs
+myDataPredAll <- read.csv("myPredData.csv", header=TRUE,na.strings=c("", "NA"), sep=",", dec=".", stringsAsFactors=FALSE)
+attach(myDataPredAll)
+
+############################################################################################################
+###	Data Exploration
+############################################################################################################
+
+## Get the "shape" of the data
+dim(myDataPredAll)
+head(myDataPredAll)
+tail(myDataPredAll)
+str(myDataPredAll)
+glimpse(myDataPredAll)
+
+# Summary statistics
+summary(myDataPredAll) 
+
+
+myDataPredAll$Purchase.Date < as.Date(myDataPredAll$S.Purchase.Date)
+str(myDataPredAll$Purchase.Date)
+
+######################################################################################################
+# S.Variable4
+unique(myDataPredAll$M.Variable4)
+sum(is.na(myDataPredAll$M.Variable4))
+# [1] 1
+
+table(myDataPredAll$M.Variable4)
+
+
+### Data Cleansing/Munging
+
+# - NAs: replace by the mean/median
+#       treshold as to the % of missing to the total number of cases (e.g. 10-25%?)
+# 
+# - Outliers: truncation - replace by a treshold
+#             do log transformation
+# Why log() ?
+# y = ln (x) <- inverse of the exponential function
+# y = log (x)
+# e.g., the values can be: 1, 10, 100, 1000, 10,000, 100,000 
+# but when we take the log, it will become: 0, 1, 2, 3, 4, 5
+
+
+######################################################################################################
+### Variable Transformations
+### These are performed in order to get different views of your data.
+### Transformations are also used to: define new variables; data cleansing (e.g. outliers)
+
+######################################################################################################
+#########                       DEPENDENT VARIABLE : M.Status                           ##############
+######################################################################################################
+
+# New variable: M.Status & Satus.Text
+# From: ChurnQ1
+# Current Status - Status = 1 means Churn
+myDataPredAll$M.Status <- ifelse(myDataPredAll$ChurnQ1 > 0 , 1 , 0)
+myDataPredAll$Status.Text <- ifelse(myDataPredAll$ChurnQ1 > 0 , "Churned" , "Active")
+unique(myDataPredAll$Status)
+
+prop.table(table(myDataPredAll$M.Status))
+
+######################################################################################################
+#
+#                                       DATA FROM Table1
+#
+######################################################################################################
+
+######################################################################################################
+# New variable: -
+# From: S.Variable4
+
+table(myDataPredAll$S.Variable4)
+
+######################################################################################################
+# New variable: M.Variable1
+# From: Variable1
+
+table(myDataPredAll$Variable1)
+sum(is.na(myDataPredAll$Variable1))
+# [1] 0
+myDataPredAll$M.Variable1 <- myDataPredAll$Variable1
+
+######################################################################################################
+# New variable: M.Variable2
+# From: Variable2
+
+table(myDataPredAll$Variable2)
+myDataPredAll$M.Variable2 <- myDataPredAll$Variable2
+
+# Understanding churn/Variable2
+table(myDataPredAll$Variable2, myDataPredAll$Status.Text)
+
+prop.table(table(myDataPredAll$Variable2, myDataPredAll$Status.Text))
+
+######################################################################################################
+# New variable: M.Year
+# From: Dates
+# myDataPred$Year - Current year using the platform or number of year using the platform. First year is 1
+# Q1 <- as.Date('2014-01-01')
+# Q2 <- as.Date('2015-01-01')
+
+# Calculating the year using the platform. If it terminates, just subtracts. If it is active, it uses
+# Q2 as the second date
+myDataPredAll$Final.Date <- as.Date(ifelse(is.na(myDataPredAll$T.Effective.Date),"2015-01-01",myDataPredAll$T.Effective.Date))
+
+myDataPredAll$M.Year <- round(difftime(myDataPredAll$Final.Date, as.Date(myDataPredAll$S.Purchase.Date),units="days") / 365) 
+
+table(myDataPredAll$Status.Text, myDataPredAll$M.Year)
+
+str(myDataPredAll)
+
+# Plotting Status per Year 
+ggplot(myDataPredAll, aes(x = as.numeric(M.Year), fill = factor(Status.Text) )) + 
+  geom_bar(width = 0.5) + 
+  xlab("Years") + 
+  ylab("Total Count") + 
+  labs(fill = "Status") + 
+  ggtitle("Year")+
+  scale_fill_discrete(breaks=c("Churned","Active"))
+
+
+######################################################################################################
+#
+#                                       New dataset
+#                             Only accounts less than 5 years
+#
+######################################################################################################
+
+
+myDataPred <- subset(myDataPredAll, as.numeric(M.Year) < 5 )
+
+# Plotting Status per Year & Service Level
+ggplot(myDataPred, aes(x = as.numeric(M.Year), fill = factor(Status.Text) )) + 
+  geom_bar(width = 0.5) + 
+  xlab("Years") + 
+  ylab("Total Count") + 
+  labs(fill = "Status") + 
+  ggtitle("Year")+
+  scale_fill_discrete(breaks=c("Churned","Active"))
+
+table(myDataPred$Status.Text, myDataPred$M.Year)
+
+######################################################################################################
+#
+#                                       DATA FROM Table2
+#
+######################################################################################################
+
+######################################################################################################
+# New variable: M.Variable3
+# From: A.Variable3
+# Identify major Variable3
+
+table(myDataPred$A.Variable3)
+str(myDataPred)
+
+# Plotting Status per Variable3 & Service Level
+ggplot(myDataPred, aes(x = M.Variable2, fill = factor(Status.Text) )) + 
+  geom_bar(width = 0.5) + 
+  facet_wrap(~A.Variable3) +
+  xlab("Service Level") + 
+  ylab("Total Count") + 
+  labs(fill = "Status") + 
+  ggtitle("Variable3")+
+  scale_fill_discrete(breaks=c("Churned","Active"))
+
+myDataPred$CharVariable3 <- as.character(myDataPred$A.Variable3)
+myDataPred$Significant.Variable3 <- ""
+
+# Identifying major Variable3
+for(i in 1:nrow(myDataPred)) {
+  
+  charVariable3 <- myDataPred$CharVariable3[i]
+  number <- length(which(myDataPred$CharVariable3 == charVariable3))
+  
+  if (number > 50){
+    myDataPred$Significant.Variable3[i] <- myDataPred$CharVariable3[i]
+  } else {
+    myDataPred$Significant.Variable3[i] <- "Not significant Variable3"
+  }
+}
+
+table(myDataPred$Significant.Variable3)
+myDataPred$M.Variable3 <- myDataPred$Significant.Variable3
+
+# Plotting Status per Variable3 & Variable2
+ggplot(myDataPred, aes(x = M.Variable2, fill = factor(Status.Text) )) + 
+  geom_bar(width = 0.5) + 
+  facet_wrap(~Significant.Variable3) +
+  xlab("Variable2") + 
+  ylab("Total Count") + 
+  labs(fill = "Status") + 
+  ggtitle("Variable3")+
+  scale_fill_discrete(breaks=c("Churned","Active"))
+
+table(myDataPred$Status.Text, myDataPred$Significant.Variable3)
+
+
+######################################################################################################
+# New variable: M.Variable5Log & M.Variable5.Sqrt
+# From A.Total.Variable5
+# A.Total.Variable5, it has 9 NAs and 1 value < 0
+sum(myDataPred$A.Total.Variable5 < 0, na.rm=TRUE)
+
+# checking incomplete data
+mean(myDataPred$A.Total.Variable5, na.rm=TRUE)
+# [1] 139614.2
+myDataPred$Variable5 <- ifelse(is.na(myDataPred$A.Total.Variable5) | myDataPred$A.Total.Variable5 < 0, 139614.2 , myDataPred$A.Total.Variable5)
+
+ggplot(myDataPred, aes(x = myDataPred$S.Variable2, y =  myDataPred$Variable5 )) + geom_point()
+
+ggplot(myDataPred, aes(x = myDataPred$Variable5 )) + 
+  geom_histogram()
+
+myDataPred$M.Variable5.Sqrt <- round(sqrt(myDataPred$Variable5))
+
+ggplot(myDataPred, aes(x = myDataPred$M.Variable5.Sqrt )) + 
+  geom_histogram()
+
+######################################################################################################
+# New variable: M.Variable6
+# From: A.AM.Variable6
+sum(is.na(myDataPred$A.AM.Variable6))
+
+table(myDataPred$A.AM.Variable6)
+
+prop.table(table(myDataPred$A.AM.Variable6))
+
+myDataPred$M.Variable6 <- ifelse(is.na(myDataPred$A.AM.Variable6), "AAAAA" , myDataPred$A.AM.Variable6)
+
+######################################################################################################
+# New variable: -
+# From: A.Variable7
+# Not being used now. It needs to upload library(zipcode)
+summary(myDataPred)
+
+######################################################################################################
+#
+#                                       DATA FROM Table3
+#
+######################################################################################################
+
+######################################################################################################
+# New variable: M.Variable8
+# From: P.Variable8
+# NA's   :35 - 3%
+
+summary(myDataPred)
+sum(is.na(myDataPred$P.Variable8))
+
+myDataPred$M.Variable8 <- ifelse(is.na(myDataPred$P.Variable8), median(myDataPred$P.Variable8) , myDataPred$P.Variable8)
+sum(is.na(myDataPred$M.Variable8))
+
+######################################################################################################
+# New variable: -
+# From: P.Variable9
+# NA's   :185 - 15.9% 
+# Not being used. Missing data for too many records
+
+summary(myDataPred)
+sum(is.na(myDataPred$P.P.Variable9))
+
+######################################################################################################
+# New variable: -
+# From: P.P.Variable10
+# NA's   :1005 - 86% 
+# Not being used. Missing data for too many records
+
+######################################################################################################
+# New variable: -
+# From: P.P.Variable11
+# NA's   :1452 - 97% 
+# Not being used. Missing data for too many records
+
+sum(is.na(P.P.Variable11))
+######################################################################################################
+# New variable: M.P.Variable12
+# From: P.Variable12
+# NA's   : 8 - .7%
+summary(myDataPred)
+
+ggplot(myDataPred, aes(x = P.Variable12, fill = factor(Status.Text) )) + 
+  geom_bar(width = 0.5) + 
+  xlab("Variable12") + 
+  ylab("Total Count") + 
+  labs(fill = "Status") + 
+  ggtitle("Variable12")
+
+ggplot(myDataPred, aes(x = P.Variable12, fill = factor(Status.Text) )) + 
+  geom_bar(width = 0.5) + 
+  xlab("Variable12") + 
+  ylab("Total Count") + 
+  labs(fill = "Status") + 
+  coord_cartesian(xlim = c(0, 15)) + 
+  ggtitle("Variable12")
+
+table(myDataPred$P.Variable12,myDataPred$Status.Text)
+
+myDataPred$M.Variable12.Sqrt <- round(sqrt(myDataPred$P.Variable12))
+
+myDataPred$M.Variable12.Sqrt[is.na(myDataPred$P.Variable12)] <- 1
+
+ggplot(myDataPred, aes(x = M.Variable12.Sqrt, fill = factor(Status.Text) )) + 
+  geom_bar(width = 0.5) + 
+  xlab("Variable12 Squareroot") + 
+  ylab("Total Count") + 
+  labs(fill = "Status") + 
+  ggtitle("Variable12")
+
+prop.table(table(myDataPred$M.Variable12.Sqrt))
+
+sum()
+
+######################################################################################################
+#
+#                                       DATA FROM Table4
+#
+######################################################################################################
+
+######################################################################################################
+# New variable: -
+# From: E.Variable13
+# NA's   :458 - 39.5%
+# Cannot be used
+
+sum(is.na(myDataPred$E.Variable13))
+
+table(myDataPred$E.Variable13,myDataPred$P.Variable2)
+
+table(myDataPred$P.Variable2) 
+
+######################################################################################################
+# New variable: -
+# From: E.Variable14, E.Variable15, E.Variable16, E.Variable17, E.Variable18, E.Variable19
+# NA's   : 458 - 39.5% 
+# Not being used. Missing data for too many records
+# All these fields from Assessment have the same percentage of missing data.
+
+sum(is.na(myDataPred$E.Variable14))
+sum(is.na(myDataPred$E.Variable15))
+sum(is.na(myDataPred$E.Variable16))
+
+ggplot(myDataPred, aes(x = M.Variable2, fill = factor(Status.Text) )) + 
+  geom_bar(width = 0.5) + 
+  facet_wrap(~E.Variable16) +
+  xlab("Variable2") + 
+  ylab("Total Count") + 
+  labs(fill = "Status") + 
+  ggtitle("Variable16")+
+  scale_fill_discrete(breaks=c("Churned","Active"))
+
+sum(is.na(myDataPred$E.Variable17))
+sum(is.na(myDataPred$E.Variable18))
+sum(is.na(myDataPred$E.Variable19))
+######################################################################################################
+# New variable: -
+# From: E.Variable20
+# NA's   : 1146 - 99% 
+# Not being used. Missing data for too many records
+
+sum(is.na(myDataPred$E.Variable20))
+
+######################################################################################################
+#
+#                                       DATA FROM DATA FROM Table5
+#
+######################################################################################################
+
+######################################################################################################
+# New variable: M.Variable21.Sqrt
+# From: O.Variable21
+# NA's   : 39 - 3.3% 
+
+sum(is.na(myDataPred$O.Variable21))
+summary(myDataPred)
+
+myDataPred$M.Variable21.Sqrt <- ifelse(is.na(myDataPred$O.Variable21), sqrt(median(myDataPred$O.Variable21)) , sqrt(myDataPred$O.Variable21))
+sum(is.na(myDataPred$M.Variable21.Sqrt))
+
+######################################################################################################
+# New variable: -
+# From: O.Variable22
+# NA's   : 13 - 1.1% 
+# All other records are populated with "AAAAAA"
+
+sum(is.na(myDataPred$O.Variable21))
+table(myDataPred$O.Variable21)
+
+######################################################################################################
+# New variable: M.Variable22
+# From: O.Variable22
+# NA's   : 108 - 9.3% 
+
+sum(is.na(myDataPred$O.Variable22))
+prop.table(table(myDataPred$O.Variable22))
+
+table(myDataPred$O.Variable22)
+
+myDataPred$M.Variable22 <- ifelse(is.na(myDataPred$O.Variable22),"No", ifelse(myDataPred$O.Variable22 == "None","No",
+        "Yes"))
+
+table(myDataPred$M.Variable22)
+unique(myDataPred$M.Variable22)
+sum(is.na(myDataPred$M.Variable22))
+
+######################################################################################################
+# New variable: -
+# From: O.Variable23
+# NA's   :78 - 6.7%
+# Max.   :4000000000
+# Median :   5000000
+
+myDataPred$Variable23 <- ifelse(is.na(myDataPred$O.Variable23),median(myDataPred$O.Variable23),myDataPred$O.Variable23)
+table(myDataPred$Variable23)
+
+myDataPred$M.Variable23.Log <- round(log10(myDataPred$Variable23 + 10))
+table(myDataPred$M.Variable23.Log)
+
+summary(myDataPred)
+
+ggplot(myDataPred, aes(x = myDataPred$M.Variable23.Log )) + 
+  geom_bar(width = 0.5) +
+  xlab("Variable23") + 
+  ylab("Total Count") + 
+  labs(fill = "Status") + 
+  ggtitle("Variable23")
+
+ggplot(myDataPred, aes(x = myDataPred$M.Variable23.Log, fill = factor(Status.Text) )) + 
+  geom_bar(width = 0.5) + 
+  xlab("Variable23") + 
+  ylab("Total Count") + 
+  labs(fill = "Status") + 
+  ggtitle("Variable23")
+
+
+######################################################################################################
+#
+#                                       DATA FROM DATA FROM Table6
+#
+######################################################################################################
+
+######################################################################################################
+# New variable: - 
+# From: R.Variable24, R.Variable25, R.Variable26, R.Variable27, R.Variable28 are not being used
+# NA's   :260 - 22.47%
+
+sum(is.na(myDataPred$R.Variable24))
+
+######################################################################################################
+# New variable: M.Variable25
+# From: R.Variable25
+# NA's   :260
+# NA means the customer didn't have any records
+
+summary(myDataPred)
+myDataPred$M.Variable25 <- myDataPred$R.Variable25
+
+# Setting to zero all accounts without Variable25 records
+myDataPred$M.Variable25[is.na(myDataPred$R.Variable25)] <- 0
+
+summary(myDataPred$M.Variable25)
+
+######################################################################################################
+#
+#                                       DATA FROM DATA FROM Table6
+#
+######################################################################################################
+
+######################################################################################################
+# New variable: M.Variable27
+# From: C.Variable26
+# NA's   : 2 - 0.1%
+# Median :  700.00
+# Max.   :31500.58
+summary(myDataPred)
+
+myDataPred$Variable27<- ifelse(is.na(myDataPred$C.Variable26),7,round(as.numeric(myDataPred$C.Variable26)))
+
+# Box plot
+ggplot(myDataPred, aes(x=factor(myDataPred$Status.Text), y = myDataPred$Variable27)) +
+  geom_boxplot()
+
+myDataPred$M.Variable27.Sqrt <- round(sqrt(myDataPred$Variable27)) 
+
+# Box plot
+ggplot(myDataPred, aes(x=factor(myDataPred$Status.Text), y = myDataPred$M.Variable27.Sqrt)) +
+  geom_boxplot()
+
+# The medians are different but the quartiles are similar.
+
+######################################################################################################
+# New variable: -
+# From: C.Variable26
+# NA's   : 2 - 0.1%
+# 1041 have value = 0. Not using it.
+
+summary(myDataPred)
+sum(myDataPred$C.Variable26 == 0, na.rm=TRUE)
+# [1] 1041
+
+######################################################################################################
+# New variable: -
+# From: C.Variable28
+# NA's   :296 - 25%
+
+sum(is.na(myDataPred$C.Variable28))
+
+######################################################################################################
+# New variable: M.Variable29
+# From: M.Variable29 & M.Year
+
+myDataPred$M.Variable29 <- ifelse(is.na(myDataPred$C.Variable28), 0 , round( as.numeric(myDataPred$C.Variable28)/(as.numeric(myDataPred$M.Year) + 1)))
+
+myDataPred$M.Variable29.Sqrt <- round(sqrt(myDataPred$M.Variable29))
+
+ggplot(myDataPred, aes(x=factor(myDataPred$Status.Text), y = myDataPred$M.Variable29.Sqrt)) +
+  geom_boxplot()
+
+######################################################################################################
+#
+#                                       DATA FROM MAPING DATA
+#
+######################################################################################################
+
+# New variable: -
+# From: Mapped.Variable4
+# Severity level of the last Support ticket opeend. For now, it doesn't help.
+# NA's   :0
+
+sum(is.na(Mapped.Variable4))
+
+myDataPred$M.Variable4 <- myDataPred$Mapped.Variable4
+
+######################################################################################################
+#                                           New data set to model
+######################################################################################################
+# Rename Account ID column to be part of the dataset for model
+
+names(myDataPred)[names(myDataPred) == 'Variable1'] <- "M.Variable1"
+
+# The new dataset has all columns starting with M.
+myDataPredModel <- select(myDataPred, starts_with("M."))
+
+# Saving as CSV to be used to model
+write.csv(x = myDataPredModel, file = 'myDataPredModel.csv')
+
+```
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -1,0 +1,276 @@
+---
+title: "Modeling"
+author: "Claudia Terrien"
+date: "May 19, 2016"
+output: html_document
+---
+
+```{r}
+
+library(ggplot2)
+library(psych)
+library(ROCR)
+
+# Decision tree packages
+library(rpart)
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+
+# Logistic regression packages
+library(ISLR)
+library(MASS)
+
+library(randomForest)
+
+detach("package:dplyr", character.only = TRUE)
+library("dplyr", character.only = TRUE)
+
+############################################################################################################
+# READ PredModel 
+# read assets file with all assets until today, cast all "" to NAs
+myDataPredModel <- read.csv("myDataPredModel.csv", header=TRUE,na.strings=c("", "NA"), sep=",", dec=".", stringsAsFactors=FALSE)
+
+str(myDataPredModel)
+myDataPredModel$M.Status <- as.factor(myDataPredModel$M.Status)
+
+######################################################################################################
+### Plotting data
+###
+######################################################################################################
+
+# Plotting Variable5Log by Status
+ggplot(myDataPredModel, aes(x = M.Variable5.Sqrt, fill = M.Status)) +
+  geom_bar(width = 0.5) 
+
+# Plotting Variable12 by Status
+ggplot(myDataPredModel, aes(x = M.Variable12.Sqrt, fill = factor(M.Status) )) + 
+  geom_bar(width = 0.5) 
+
+# Plotting Status by Variable5Log
+ggplot(myDataPredModel, aes(x=factor(M.Status), y = M.Variable5.Sqrt)) +
+  geom_boxplot() 
+
+# Variable5
+summary(myDataPredModel$M.Variable5.Sqrt)
+
+print(quantile(myDataPredModel$M.Variable5.Sqrt,probs=c(0.01,0.05,0.5,0.95,0.99),na.rm=T)) 
+
+
+#############################################################################################
+# SEPARATE TRAIN AND TEST DATA
+# n-fold cross-validation
+# Shuffle the dataset first in order to have a fair distribution of the output variable in both sets.
+# First you train, then you test
+#############################################################################################
+
+# Shuffle the dataset; build train and test
+n <- nrow(myDataPredModel)
+shuffled <- myDataPredModel[sample(n), ]
+
+# 70% is train data
+myDataPredTrain <- shuffled[1:round(0.7 * n), ]
+myDataPredTest <- shuffled[(round(0.7 * n) + 1):n, ]
+str(myDataPredTrain)
+
+######################################################################################################
+###                               Classification Models                                          #####
+###
+######################################################################################################
+
+# Set random seed.
+set.seed(1)
+
+y <- "M.Status"
+
+x1 <- c("M.Variable4","M.Variable2","M.Year")
+x2 <- c("M.Variable4","M.Variable2","M.Year","M.Variable5.Sqrt")
+x3 <- c("M.Variable4","M.Variable2","M.Year","M.Variable5.Sqrt","M.Variable3","M.Variable6","M.Variable7","M.Variable8.Sqrt","M.Variable9.Sqrt","M.Variable10","Variable11","M.Variable12","M.Variable13","M.Variable14")
+
+str(myDataPredTrain)
+
+fmla1 <- paste(y, paste(x1, collapse="+"), sep="~")
+fmla2 <- paste(y, paste(x2, collapse="+"), sep="~")
+fmla3 <- paste(y, paste(x3, collapse="+"), sep="~")
+
+print(fmla1)
+print(fmla2)
+print(fmla3)
+
+# Forcing some references
+myDataPredTrain$M.Variable2 <- as.factor(myDataPredTrain$M.Variable2)
+myDataPredTrain$M.Variable2 <- relevel(myDataPredTrain$M.Variable2, ref = "AAAAA")
+
+myDataPredTrain$M.Variable6 <- as.factor(myDataPredTrain$M.Variable6)
+myDataPredTrain$M.Variable6 <- relevel(myDataPredTrain$M.Variable6, ref = "BBBBBB")
+
+
+######################################################################################################
+### Decision tree
+###
+######################################################################################################
+
+# Set random seed. Don't remove this line
+set.seed(1)
+
+# Build a tree model: tree
+tree1 <- rpart(fmla1, method = "class", data = myDataPredTrain)
+tree2 <- rpart(fmla2, method = "class", data = myDataPredTrain)
+tree3 <- rpart(fmla3, method = "class", data = myDataPredTrain)
+
+options(scipen=5)
+format(myDataPredModel$M.Revenue.Sqrt, scientific = FALSE)
+
+# Draw the decision tree
+fancyRpartPlot(tree1)
+fancyRpartPlot(tree2)
+fancyRpartPlot(tree3)
+
+summary(tree1)
+summary(tree2)
+summary(tree3)
+
+# Evaluating the Decision trees
+
+tree1.test <- predict(tree1,myDataPredTest,type="class")
+table(myDataPredTest$M.Status,tree1.test)
+#    tree1.test
+#       0   1
+#   0 198  33
+#   1  40  76
+
+# Accuracy = 0.7896
+# Precision = 0.6972
+# Recall = 0.6551
+
+tree2.test <- predict(tree2,myDataPredTest,type="class")
+table(myDataPredTest$M.Status,tree2.test)
+#    tree2.test
+#       0   1
+#   0 225   6
+#   1  54  62
+
+# Accuracy = 0.8270
+# Precision = 0.9117
+# Recall = 0.5344
+
+tree3.test <- predict(tree3,myDataPredTest,type="class")
+table(myDataPredTest$M.Status,tree3.test)
+#       0   1
+#   0 214  17
+#   1  24  92
+
+# Accuracy = 0.8818
+# Precision = 0.8440
+# Recall = 0.7931
+
+#  The 3rd model has the best Accuracy and Recall
+
+
+#############################################################################################
+#
+#                                 APPLYING LOGISTIC REGRESSION
+#
+#############################################################################################
+str(myDataPredTrain)
+
+lg1 <- glm(fmla1, data=myDataPredTrain, family=binomial(link="logit"))
+lg2 <- glm(fmla2, data=myDataPredTrain, family=binomial(link="logit"))
+lg3 <- glm(fmla3, data=myDataPredTrain, family=binomial(link="logit"))
+
+summary(lg1)
+# AIC: 884.17
+summary(lg2)
+# AIC: 798.66
+summary(lg3)
+# AIC: 625.72
+
+#############################################################################################
+# APPLY PREDICTION
+#############################################################################################
+# lg1
+lg1.train <- predict(lg1,newdata=myDataPredTrain,type="response")
+lg1.train.Status05 <- ifelse(lg1.train > 0.5, 1, 0 )
+table(myDataPredTrain$M.Status,lg1.train.Status05)
+
+#       0   1
+#   0 438  79
+#   1 112 181
+
+# Accuracy = 0.7641
+# Recall = 0.9476
+
+lg1.test <- predict(lg1,newdata=myDataPredTest,type="response")
+lg1.test.Status05 <- ifelse(lg1.test > 0.5, 1, 0 )
+table(myDataPredTest$M.Status,lg1.test.Status05)
+#       0   1
+#   0 197  34
+#   1  40  76
+
+# Accuracy = 0.7867
+# Recall = 0.6551
+
+# lg2
+lg2.train <- predict(lg2,newdata=myDataPredTrain,type="response")
+lg2.train.Status05 <- ifelse(lg2.train > 0.5, 1, 0 )
+table(myDataPredTrain$M.Status,lg2.train.Status05)
+
+lg2.test <- predict(lg2,newdata=myDataPredTest,type="response")
+lg2.test.Status05 <- ifelse(lg2.test > 0.5, 1, 0 )
+table(myDataPredTest$M.Status,lg2.test.Status05)
+#       0   1
+#   0 197  34
+#   1  38  78
+
+# Accuracy = 0.7925
+# Recall = 0.6724
+
+# lg3
+lg3.train <- predict(lg3,newdata=myDataPredTrain,type="response")
+lg3.train.Status05 <- ifelse(lg3.train > 0.5, 1, 0 )
+table(myDataPredTrain$M.Status,lg3.train.Status05)
+
+lg3.test <- predict(lg3,newdata=myDataPredTest,type="response")
+lg3.test.Status05 <- ifelse(lg3.test > 0.5, 1, 0 )
+table(myDataPredTest$M.Status,lg3.test.Status05)
+
+#       0   1
+#   0 206  25
+#   1  27  89
+
+# Accuracy = 0.8501
+# Recall = 0.7672
+
+# Changing the threshold to increase Recall
+
+lg3.test.Status04 <- ifelse(lg3.test > 0.4, 1, 0 )
+table(myDataPredTest$M.Status,lg3.test.Status04)
+# 
+#       0   1
+#   0 198  33
+#   1  21  95
+
+# Accuracy = 0.8443
+# Recall = 0.8189
+
+lg3.test.Status03 <- ifelse(lg3.test > 0.3, 1, 0 )
+table(myDataPredTest$M.Status,lg3.test.Status03)
+# 
+#       0   1
+#   0 176  55
+#   1  14 102
+  
+# Accuracy = 0.8011
+# Recall = 0.8793
+
+# It looses Accuracy but it improves Recall
+
+```
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

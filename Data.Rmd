@@ -1,0 +1,325 @@
+---
+title: "Data"
+author: "Claudia Terrien"
+date: "May 5, 2016"
+output: html_document
+---
+
+```{r}
+library("dplyr")
+
+# All tabels and variables names were replaced.
+
+############################################################################################################
+# READ Pred.Table5 
+# read Table5s file with all Table5s until today, cast all "" to NAs
+myTable5 <- read.csv("Pred.Table5.csv", header=TRUE,na.strings=c("", "NA"), sep=",", dec=".", stringsAsFactors=FALSE)
+
+myTable5Grouped <- group_by(myTable5, Variable1)
+myTable5Summarised <- summarise(myTable5Grouped, Variable1 = last(Variable1), S.Purchase.Date = first(Purchase.Date), S.Variable4 = last(Variable4), S.Variable3 = last(Variable3))
+
+glimpse(myTable5Summarised)
+str(myTable5Summarised)
+
+# Remove all lines without Purchase.Date
+myTable5Clean <- myTable5Summarised[!is.na(myTable5Summarised[,3]),]
+
+############################################################################################################
+# READ Pred.Table4 
+# All teminations are full
+myTable4 <- read.csv("Pred.Table4.csv", na.strings=c("", "NA"), header=TRUE, sep=",", dec=".", stringsAsFactors=FALSE)
+myTable4Grouped <- group_by(myTable4, Variable1)
+myTable4Summarised <- summarise(myTable4Grouped, 
+                                     T.Effective.Date = last(Table4.Effective.Date),
+                                     T.Variable5 = last(Table4.Variable5))
+
+############################################################################################################
+# MERGING FILES - Table5 and Table4
+myData=merge(myTable5Clean,myTable4Summarised,by.x=c("Variable1"),by.y=c("Variable1"), all.x=TRUE)
+
+myData$S.Purchase.Date <- as.Date(myData$S.Purchase.Date)
+myData$T.Effective.Date <- as.Date(myData$T.Effective.Date)
+
+############################################################################################################
+# PERIOD TO BE CONSIDERED
+# USING Q12015
+Q1 <- as.Date('2015-01-01')
+Q2 <- as.Date('2015-04-01')
+
+# variables to calculate churn
+myData$ActiveQ1 <- 0
+myData$ChurnQ1 <- 0
+myData$NewQ1 <- 0
+
+############################################################################################################
+# FUNCTION myQuarter
+# Based on the Table5's Purchase.Date and Table4's Effecticve date, identifies if the Table6 in 
+# this period was a New, Active, or Churn Table6.
+
+myQuarter <- function(i, Qcurrent, Qnext, QActive, QChurn, QNew){
+  result <- ""
+  if (myData$S.Purchase.Date[i] >= Qcurrent) 
+  {    
+    if (myData$S.Purchase.Date[i] < Qnext)
+    {
+      # treatment for NEW
+      result <- "new"
+    }
+    else 
+    {
+      result <- ""
+    }
+  }
+  else 
+  {
+    # didn't terminate, it was active during the quarter
+    if (is.na(myData$T.Effective.Date[i]))
+      {
+        result <- "active"
+      }
+      
+      # terminate after the beginning of the next quarter, it was active during the quarter
+      else if (myData$T.Effective.Date[i] >= Qnext)
+      {
+        # QActive[i] <- 1
+        result <- "active"
+      }
+      
+      # terminate before the beginning of the next quarter, it counts as churn
+      else if (myData$T.Effective.Date[i] >= Qcurrent && myData$T.Effective.Date[i] < Qnext)
+      {
+        result <- "churn"
+      }
+      # terminate before the beginning of the quarter, it will return empty
+  }
+  return(result)
+}
+response <- ""
+
+############################################################################################################
+# Running myQuarter for all dataset
+
+for(i in 1:nrow(myData)) {
+  #################################################################################################
+  # run Q12015
+  response <- myQuarter(i, Q1, Q2, myData$ActiveQ1, myData$ChurnQ1, myData$NewQ1)
+#   print("Q12015")
+#   print(response) 
+  if(response == "active")
+  {
+    myData$ActiveQ1[i] <- 1
+  }
+  else if (response == "churn")
+  {
+    myData$ChurnQ1[i] <- 1
+  }
+  else if (response == "new")
+  {
+    myData$NewQ1[i] <- 1
+  }
+  response <-""
+
+}
+
+###########################################################################################################
+## SELECT THE DATASET TO WORK WITH
+## Keeping Table6s that were Active or Churning during Q1
+myDataQ1 <- subset(myData, myData$ActiveQ1 == 1 | myData$ChurnQ1 == 1)
+
+
+## Bonus - Active/Churn numbers during this period
+churn <- sum(myData$ChurnQ1)
+active <- sum(myData$ActiveQ1)
+new <- sum(myData$NewQ1)
+
+churn
+active
+new
+
+(churn/active)*100
+
+
+###########################################################################################################
+## ADD OTHER TABLES with factors
+###########################################################################################################
+## Table6
+
+# read Churn.Table6 file with all Table6s until today, cast all "" to NAs
+myTable6 <- read.csv("Pred.Table6.csv", header=TRUE,na.strings=c("", "NA"), sep=",", dec=".", stringsAsFactors=FALSE)
+
+myTable6Grouped <- group_by(myTable6, Table6.Name)
+myTable6Summarised <- summarise(myTable6Grouped, 
+                                 A.Table6.ID = last(Table6.ID), 
+                                 A.Table6.Name = last(Table6.Name), 
+                                 A.Created.Date = first(Created.Date), 
+                                 A.Table6.Status = last(Table6.Status), 
+                                 A.Variable6=last(Variable6),
+                                 A.Variable7=last(Variable7),
+                                 A.Variable8=last(Variable8),
+                                 A.Variable9=last(Variable9),
+                                 A.Variable10=last(Variable10))
+
+###########################################################################################################
+## Table1
+# read Churn.Table1 file with all Table2s until today, cast all "" to NAs
+
+myTable1 <- read.csv("Pred.Table1.csv", header=TRUE,na.strings=c("", "NA"), sep=",", dec=".", stringsAsFactors=FALSE)
+
+# Filter Table1s started after Q2
+myTable11 <- subset(myTable1, Table1..Created.Date < Q2 )
+
+myTable1Grouped <- group_by(myTable11, Variable1..Variable1.Name)
+myTable1Summarised <- summarise(myTable1Grouped, 
+                                 P.Variable1.ID = last(Variable1.ID),
+                                 P.Variable1.Name = last(Variable1..Variable1.Name), 
+                                 P.Variable4 = last(Related.Variable4),
+                                 P.Variable11 = last(Variable11),
+                                 P.Variable37 = last(Variable37),
+                                 P.Variable38 = last(Variable38),
+                                 P.Variable39 = last(Variable39),
+                                 P.Variable40 = last(Variable40),
+                                 P.Variable41 = last(Variable41),
+                                 P.Variable42 = last(Variable42),
+                                 P.Variable43 = last(Variable43),
+                                 P.Variable44 = last(Variable44),
+                                 P.Variable45 = last(Variable45),
+                                 P.Variable36 = n())
+
+
+###########################################################################################################
+## Table2
+# read Churn.Table2 file with all Table2s until today, cast all "" to NAs
+
+myTable2 <- read.csv("Pred.Table2.csv", header=TRUE,na.strings=c("", "NA"), sep=",", dec=".", stringsAsFactors=FALSE)
+
+# Filter Table2s created after Q2
+myTable21 <- subset(myTable2, Customer.Table2..Created.Date < Q2 )
+
+myTable2Grouped <- group_by( myTable21, Variable1.ID)
+myTable2Summarised <- summarise(myTable2Grouped, 
+                                     E.Variable1.ID = last(Variable1.ID), 
+                                     E.Variable46 = last(Variable46),                                                  E.Variable47= last(Variable47), 
+                                     E.Variable14 = last(Variable14),
+                                     E.Variable15 = last(Variable15),
+                                     E.Variable16 = last(Variable16),
+                                     E.Variable17 = last(Variable17),
+                                     E.Variable18 = last(Variable18),
+                                     E.Variable19 = last(Variable19),
+                                     E.Variable20 = last(Variable20),
+                                     E.Variable21 = mean(Variable21))
+
+###########################################################################################################
+## Table3
+# read Pred.Table3 file with all Table2s until today, cast all "" to NAs
+
+myTable3 <- read.csv("Pred.Table3.csv", header=TRUE,na.strings=c("", "NA"), sep=",", dec=".", stringsAsFactors=FALSE)
+ 
+# Filter Opportunities created after Q2
+myTable31 <- subset(myTable3, Close.Date < Q2 )
+
+myTable3Grouped <- group_by(myTable31,Variable1.Name)
+myTable3Summarised <- summarise(myTable3Grouped, 
+                                     O.Variable1=last(Variable1.Name), 
+                                     O.Variable1.Name=last(Variable1.Name),
+                                     O.Variable22=last(Variable22),
+                                     O.Variable23=last(Variable23),
+                              O.Variable24=last(Variable24),
+                                     O.Variable25=last(Variable25),
+                                     O.Variable26=last(Variable26))
+
+###########################################################################################################
+## Table7
+# read Pred.Table7 file with all Table6s until today, cast all "" to NAs
+
+myTable7 <- read.csv("Pred.Table7.csv", header=TRUE,na.strings=c("", "NA"), sep=",", dec=".", stringsAsFactors=FALSE)
+
+# Filter Table7 created after Q2
+myTable71 <- subset(myTable7, Table7.Created.Date < Q2 )
+
+myTable7Grouped <- group_by(myTable71, Table6)
+myTable7Summarised <- summarise(myTable7Grouped, 
+                                 R.Variable26 = last(Variable26),
+                                 R.Variable27 = last(Variable27),
+                                 R.Variable28 = last(Variable28),
+                                 R.Variable29 = last(Variable29),
+                                 R.Variable30 = last(Variable30),
+                                 R.Variable31 = n())
+
+###########################################################################################################
+## Table8
+# read Pred.Case file with all Variable1 until today, cast all "" to NAs
+
+myTable8 <- read.csv("Pred.Table8.csv", header=TRUE,na.strings=c("", "NA"), sep=",", dec=".", stringsAsFactors=FALSE)
+
+# Filter Table8 created after Q2
+mTable81 <- subset(myTable8, Date.Time.Opened < Q2 )
+
+myTable8Grouped <- group_by(myTable81, Variable1.Name)
+myTable8ummarised <- summarise(myTable8Grouped, 
+                                 C.Variable32 = mean(Variable32),
+                                 C.Variable33 = sum(Variable33),
+                                 C.Variable34 = last(Variable34),
+                                 C.Variable35 = n())
+
+############################################################################################################
+# MERGING FILES
+
+myDataQ1v1=merge(myDataQ1,myTable6Summarised,by.x=c("Variable1.Name"),by.y=c("Variable1.Name"), all.x=TRUE)
+
+myDataQ1v2=merge(myDataQ1v1,myTable1Summarised,by.x=c("Variable1.Name"),by.y=c("Variable1..Variable1.Name"), all.x=TRUE)
+
+myDataQ1v3=merge(myDataQ1v2,myTable2Summarised,by.x=c("P.Variable1.ID"),by.y=c("E.Variable1.ID"), all.x=TRUE)
+
+myDataQ1v4=merge(myDataQ1v3,myTable3Summarised,by.x=c("Variable1.Name"),by.y=c("Variable1.Name"), all.x=TRUE)
+
+myDataQ1v5=merge(myDataQ1v4,myTable7Summarised,by.x=c("Variable1.Name"),by.y=c("Variable1"), all.x=TRUE)
+
+myDataQ1v6=merge(myDataQ1v5,myTable8ummarised,by.x=c("Variable1.Name"),by.y=c("Variable1.Name"), all.x=TRUE)
+
+############################################################################################################
+# CLEANING UP
+# Removing redundant columns
+myDataQ1v7 <- subset(myDataQ1v6, select = -c(P.Variable1.Name, Variable1.ID.y, A.Variable1.ID))
+
+# renaming columns
+names(myDataQ1v7)[names(myDataQ1v7) == 'Table6.ID.x'] <- 'Table6.ID'
+
+# Removing customer's IDs columns
+myDataQ1v8 <- subset(myDataQ1v7, select = -c(P.Variable4, P.Variable2, A.Variable1.Name, Variable1.Name, O.Variable1.Name, O.Variable1.Name))
+
+attach(myDataQ1v8)
+
+# MApping some values
+myDataQ1v8$Mapped.Variable2 <- ifelse(is.na(S.Variable4),"11111111",
+  ifelse(S.Variable2 == "AAAAAAAA", "11111111",
+  ifelse(S.Variable2 == "BBBBBBBB", "11111111",
+  ifelse(S.Variable2 == "CCCCCCCC", "11111111",
+  ifelse(S.Variable2 == "DDDDDDDD", "11111111",
+  ifelse(S.Variable2 == "EEEEEEEE", "22222222",
+  ifelse(S.Variable2 == "FFFFFFFF", "22222222",
+  ifelse(S.Variable2 == "GGGGGGGG", "22222222",
+  ifelse(S.Variable2 == "HHHHHHHH", "22222222",
+  ifelse(S.Variable2 == "IIIIIIII", "22222222",
+  ifelse(S.Variable2 == "JJJJJJJJ", "33333333",
+  ifelse(S.Variable2 == "KKKKKKKK", "33333333",
+  ifelse(S.Variable2 == "LLLLLLLL", "33333333",  
+  ifelse(S.Variable2 == "MMMMMMMM", "33333333",  
+  ifelse(S.Variable2 == "NNNNNNNN", "33333333",
+  ifelse(S.Variable2 == "OOOOOOOO", "33333333",
+  ifelse(S.Variable2 == "PPPPPPPP", "33333333",
+  ifelse(S.Variable2 == "QQQQQQQQ", "33333333",
+         "33333333"))))))))))))))))))
+
+# Selecting dataset to clean the data
+myDataQ1v9 <- subset(myDataQ1v8, select = -c(P.Variable4, P.Variable45, A.Variable1.Name, Variable1.Name, O.Variable1.Name, O.Variable1.Name))
+
+write.csv(x = myDataQ1v9, file = 'myPredData.csv')
+
+```
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
